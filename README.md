@@ -1,5 +1,8 @@
 # swagger-mcp
 
+[![Certified by MCP Review ](https://img.shields.io/badge/Certified_by-MCP_Review-brightgreen?style=flat-square)](https://mcpreview.com/mcp-servers/danishjsheikh/swagger-mcp)
+
+
 ## Overview
 `swagger-mcp` is a tool designed to scrape Swagger UI by extracting the `swagger.json` file and dynamically generating well-defined mcp tools at runtime. These tools can be utilized by the MCP client for further tool selection.
 
