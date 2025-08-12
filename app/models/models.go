@@ -65,9 +65,18 @@ type SchemaRef struct {
 
 // SseConfig stores SSE (Server-Sent Events) related parameters
 type SseConfig struct {
-	SseMode bool   `json:"sseMode"` // Whether to run in SSE mode
-	SseAddr string `json:"sseAddr"` // SSE server listen address
-	SseUrl  string `json:"sseUrl"`  // Base URL for the SSE server
+	SseMode    bool   `json:"sseMode"`    // Whether to run in SSE mode
+	SseAddr    string `json:"sseAddr"`    // SSE server listen address
+	SseUrl     string `json:"sseUrl"`     // Base URL for the SSE server
+	SseHeaders string `json:"sseHeaders"` // Read headers from sse request, and pass to API request (format: name1,name2)
+}
+
+// HttpConfig stores StreamableHTTP related parameters
+type HttpConfig struct {
+	HttpMode    bool   `json:"httpMode"`    // Whether to run in StreamableHTTP mode
+	HttpAddr    string `json:"httpAddr"`    // StreamableHTTP server listen address
+	HttpPath    string `json:"httpPath"`    // Base URL for the StreamableHTTP server
+	HttpHeaders string `json:"httpHeaders"` // Read headers from StreamableHTTP request, and pass to API request (format: name1,name2)
 }
 
 // ApiConfig stores API related parameters
@@ -81,13 +90,13 @@ type ApiConfig struct {
 	BasicAuth      string `json:"basicAuth"`      // Basic auth credentials
 	ApiKeyAuth     string `json:"apiKeyAuth"`     // API key authentication information
 	BearerAuth     string `json:"bearerAuth"`     // Bearer token
-	SseHeaders     string `json:"sseHeaders"`     // Read headers from sse request, and pass to API request (format: name1,name2)
 	Headers        string `json:"headers"`        // Additional headers to include in requests (format: name1=value1,name2=value2)
 }
 
 // Config stores all command line parameters
 type Config struct {
-	SpecUrl string    `json:"specUrl"` // URL of the Swagger JSON specification
-	SseCfg  SseConfig `json:"sseCfg"`  // SSE related configuration
-	ApiCfg  ApiConfig `json:"apiCfg"`  // API related configuration
+	SpecUrl string     `json:"specUrl"` // URL of the Swagger JSON specification
+	SseCfg  SseConfig  `json:"sseCfg"`  // SSE related configuration
+	HttpCfg HttpConfig `json:"httpCfg"` // StreamableHTTP related configuration
+	ApiCfg  ApiConfig  `json:"apiCfg"`  // API related configuration
 }

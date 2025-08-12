@@ -19,7 +19,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-const sseHeadersKey = "__sseHeadersKey"
+const headersKey = "__headersKey__"
 
 func ExtractSchemaName(ref, schemaType string) string {
 	if ref != "" {
@@ -103,15 +103,15 @@ func CreateServer(swaggerSpec models.SwaggerSpec, config models.Config) {
 	if config.SseCfg.SseMode {
 		// Create and start SSE server
 		sseServer := server.NewSSEServer(mcpServer, server.WithBaseURL(config.SseCfg.SseUrl), server.WithSSEContextFunc(func(ctx context.Context, r *http.Request) context.Context {
-			if len(config.ApiCfg.SseHeaders) == 0 {
+			if len(config.SseCfg.SseHeaders) == 0 {
 				return ctx
 			}
-			keys := strings.Split(config.ApiCfg.SseHeaders, ",")
+			keys := strings.Split(config.SseCfg.SseHeaders, ",")
 			sseHeaders := map[string]string{}
 			for _, key := range keys {
 				sseHeaders[key] = r.Header.Get(key)
 			}
-			return context.WithValue(ctx, sseHeadersKey, sseHeaders)
+			return context.WithValue(ctx, headersKey, sseHeaders)
 		}))
 		endpoint, err := sseServer.CompleteSseEndpoint()
 		if err != nil {
@@ -119,6 +119,24 @@ func CreateServer(swaggerSpec models.SwaggerSpec, config models.Config) {
 		}
 		log.Printf("Starting SSE server on %s, endpoint: %s", config.SseCfg.SseAddr, endpoint)
 		if err := sseServer.Start(config.SseCfg.SseAddr); err != nil {
+			log.Fatalf("Server error: %v", err)
+		}
+	} else if config.HttpCfg.HttpMode {
+		// Create and start StreamableHTTP server
+		streamableHttpServer := server.NewStreamableHTTPServer(mcpServer, server.WithEndpointPath(config.HttpCfg.HttpPath), server.WithHTTPContextFunc(func(ctx context.Context, r *http.Request) context.Context {
+			if len(config.HttpCfg.HttpHeaders) == 0 {
+				return ctx
+			}
+			keys := strings.Split(config.HttpCfg.HttpHeaders, ",")
+			sseHeaders := map[string]string{}
+			for _, key := range keys {
+				sseHeaders[key] = r.Header.Get(key)
+			}
+			return context.WithValue(ctx, headersKey, sseHeaders)
+		}))
+
+		log.Printf("Starting StreamableHTTP server on %s, endpoint: %s", config.HttpCfg.HttpAddr, config.HttpCfg.HttpPath)
+		if err := streamableHttpServer.Start(config.HttpCfg.HttpAddr); err != nil {
 			log.Fatalf("Server error: %v", err)
 		}
 	} else {
@@ -355,8 +373,12 @@ func CreateMCPToolHandler(
 ) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		currentReqURL := reqURL
+		arguments := request.GetArguments()
 		for _, paramName := range reqPathParam {
-			param, ok := request.Params.Arguments[paramName].(string)
+			if arguments == nil {
+				return mcp.NewToolResultError(fmt.Sprintf("[Error] missing or invalid Path Parameter: %s", paramName)), nil
+			}
+			param, ok := arguments[paramName].(string)
 			if !ok {
 				return mcp.NewToolResultError(fmt.Sprintf("[Error] missing or invalid Path Parameter: %s", paramName)), nil
 			}
@@ -371,7 +393,10 @@ func CreateMCPToolHandler(
 			}
 			q := u.Query()
 			for _, name := range reqQueryParam {
-				val, ok := request.Params.Arguments[name].(string)
+				if arguments == nil {
+					return mcp.NewToolResultError(fmt.Sprintf("[Error] missing or invalid Query Parameter: %s", name)), nil
+				}
+				val, ok := arguments[name].(string)
 				if !ok {
 					return mcp.NewToolResultError(fmt.Sprintf("[Error] missing or invalid Query Parameter: %s", name)), nil
 				}
@@ -383,7 +408,10 @@ func CreateMCPToolHandler(
 
 		reqBodyData := make(map[string]interface{})
 		for paramName, paramType := range reqBody {
-			paramStr, exists := request.Params.Arguments[paramName].(string)
+			if arguments == nil {
+				return mcp.NewToolResultError(fmt.Sprintf("[Error] missing Body Parameter: %s", paramName)), nil
+			}
+			paramStr, exists := arguments[paramName].(string)
 			if !exists {
 				return mcp.NewToolResultError(fmt.Sprintf("[Error] missing Body Parameter: %s", paramName)), nil
 			}
@@ -444,7 +472,10 @@ func CreateMCPToolHandler(
 		}
 
 		for _, headerName := range reqHeader {
-			headerValue, ok := request.Params.Arguments[headerName].(string)
+			if arguments == nil {
+				return mcp.NewToolResultError(fmt.Sprintf("[Error] missing or invalid Header: %s", headerName)), nil
+			}
+			headerValue, ok := arguments[headerName].(string)
 			if !ok {
 				return mcp.NewToolResultError(fmt.Sprintf("[Error] missing or invalid Header: %s", headerName)), nil
 			}
@@ -470,9 +501,9 @@ func CreateMCPToolHandler(
 		}
 
 		// headers from sse
-		sseHeadersValue := ctx.Value(sseHeadersKey)
-		if sseHeadersValue != nil {
-			if sseHeaders, ok := sseHeadersValue.(map[string]string); ok {
+		headersValue := ctx.Value(headersKey)
+		if headersValue != nil {
+			if sseHeaders, ok := headersValue.(map[string]string); ok {
 				for k, v := range sseHeaders {
 					req.Header.Set(k, v)
 				}

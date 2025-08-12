@@ -13,6 +13,21 @@ import (
 	"github.com/danishjsheikh/swagger-mcp/app/swagger"
 )
 
+func getHttpAddr(httpAddr string) string {
+	if httpAddr == "" {
+		return "localhost:8080"
+	}
+	// ":Port" or "IP:Port"
+	if strings.HasPrefix(httpAddr, ":") {
+		// sseUrl = http://localhost:Port
+		return "http://localhost" + httpAddr
+	}
+	if !strings.Contains(httpAddr, ":") {
+		log.Fatal("sseAddr must be in :Port or IP:Port format")
+	}
+	return httpAddr
+}
+
 func getSseUrlAddr(sseUrl, sseAddr string) (string, string) {
 	// Only complement if one is empty; if both are set, use as-is
 	if sseAddr == "" && sseUrl == "" {
@@ -60,10 +75,14 @@ func getSseUrlAddr(sseUrl, sseAddr string) (string, string) {
 
 func main() {
 	var finalSseUrl, finalSseAddr string
+	var finalHttpPath, finalHttpAddr string
 	specUrl := flag.String("specUrl", "", "URL of the Swagger JSON specification")
 	sseMode := flag.Bool("sse", false, "Run in SSE mode instead of stdio mode")
 	sseAddr := flag.String("sseAddr", "", "SSE server listen address in :Port or IP:Port format")
 	sseUrl := flag.String("sseUrl", "", "Base URL for the SSE server")
+	httpMode := flag.Bool("http", false, "Run in StreamableHTTP mode instead of stdio mode")
+	httpAddr := flag.String("httpAddr", "", "StreamableHTTP server listen address in :Port or IP:Port format")
+	httpPath := flag.String("httpPath", "", "Endpoint path for the StreamableHTTP server")
 	baseUrl := flag.String("baseUrl", "", "Base URL for API requests")
 	includePaths := flag.String("includePaths", "", "Comma-separated list of paths or regex to include")
 	excludePaths := flag.String("excludePaths", "", "Comma-separated list of paths or regex to exclude")
@@ -75,6 +94,7 @@ func main() {
 	apiKeyAuth := flag.String("apiKeyAuth", "", "API key auth, format: 'passAs:name=value', passAs=header/query/cookie, multiple by comma")
 	headers := flag.String("headers", "", "Additional headers to include in requests (format: name1=value1,name2=value2)")
 	sseHeaders := flag.String("sseHeaders", "", "Read headers from sse request, and pass to API request (format: name1,name2)")
+	httpHeaders := flag.String("httpHeaders", "", "Read headers from StreamableHTTP request, and pass to API request (format: name1,name2)")
 
 	flag.Parse()
 
@@ -103,9 +123,18 @@ func main() {
 			log.Fatal("baseUrl must start with http:// or https://")
 		}
 	}
+	if *sseMode && *httpMode {
+		log.Fatal("Cannot run in both SSE and StreamableHTTP modes")
+	}
 
 	if *sseMode { // get final sseAddr and sseUrl
 		finalSseUrl, finalSseAddr = getSseUrlAddr(*sseUrl, *sseAddr)
+	}
+	if *httpMode {
+		if *httpPath == "" {
+			finalHttpPath = "/mcp"
+		}
+		finalHttpAddr = getHttpAddr(*httpAddr)
 	}
 	swaggerSpec, err := swagger.LoadSwagger(*specUrl)
 	if err != nil {
@@ -116,9 +145,16 @@ func main() {
 	config := models.Config{
 		SpecUrl: *specUrl,
 		SseCfg: models.SseConfig{
-			SseMode: *sseMode,
-			SseAddr: finalSseAddr,
-			SseUrl:  finalSseUrl,
+			SseMode:    *sseMode,
+			SseAddr:    finalSseAddr,
+			SseUrl:     finalSseUrl,
+			SseHeaders: *sseHeaders,
+		},
+		HttpCfg: models.HttpConfig{
+			HttpMode:    *httpMode,
+			HttpAddr:    finalHttpAddr,
+			HttpPath:    finalHttpPath,
+			HttpHeaders: *httpHeaders,
 		},
 		ApiCfg: models.ApiConfig{
 			BaseUrl:        *baseUrl,
@@ -131,11 +167,19 @@ func main() {
 			ApiKeyAuth:     *apiKeyAuth,
 			BearerAuth:     *bearerAuth,
 			Headers:        *headers,
-			SseHeaders:     *sseHeaders,
 		},
 	}
 
-	fmt.Printf("Starting server with specUrl: %s, SSE mode: %v, SSE URL: %s, SSE Addr: %s, Base URL: %s, Include Paths: %s, Exclude Paths: %s, Include Methods: %s, Exclude Methods: %s, Security: %s, BasicAuth: %s, ApiKeyAuth: %s, BearerAuth: %s, Headers: %s, SSE Headers: %s\n",
-		config.SpecUrl, config.SseCfg.SseMode, config.SseCfg.SseUrl, config.SseCfg.SseAddr, config.ApiCfg.BaseUrl, config.ApiCfg.IncludePaths, config.ApiCfg.ExcludePaths, config.ApiCfg.IncludeMethods, config.ApiCfg.ExcludeMethods, config.ApiCfg.Security, config.ApiCfg.BasicAuth, config.ApiCfg.ApiKeyAuth, config.ApiCfg.BearerAuth, config.ApiCfg.Headers, config.ApiCfg.SseHeaders)
+	if *sseMode {
+		fmt.Printf("Starting server with specUrl: %s, SSE mode, SSE URL: %s, SSE Addr: %s, Base URL: %s\n",
+			config.SpecUrl, config.SseCfg.SseUrl, config.SseCfg.SseAddr, config.ApiCfg.BaseUrl)
+
+	} else if *httpMode {
+		fmt.Printf("Starting server with specUrl: %s, StreamableHTTP mode, HTTP URL: %s, HTTP Addr: %s, Base URL: %s\n",
+			config.SpecUrl, config.SseCfg.SseUrl, config.SseCfg.SseAddr, config.ApiCfg.BaseUrl)
+
+	} else {
+		fmt.Printf("Starting server with specUrl: %s, Stdio mode.\n", config.SpecUrl)
+	}
 	mcpserver.CreateServer(swaggerSpec, config)
 }
