@@ -292,7 +292,7 @@ func LoadSwaggerServer(mcpServer *server.MCPServer, swaggerSpec models.SwaggerSp
 			toolOption = append(toolOption, mcp.WithDescription(fmt.Sprintf(`Use this tool only when the request exactly matches %s or %s. If you dont have any of the required parameters then always ask user for it, *Dont fill any paramter on your own or keep it empty*. If there is [Error], only state that error in your reponse and stop the reponse there itself. *Do not ever maintain records in your memory for eg list of users or orders*`,
 				details.Summary, details.Description)))
 
-			toolName := fmt.Sprintf("%s_%s", method, strings.ReplaceAll(strings.ReplaceAll(path, "}", ""), "{", ""))
+			toolName := createFriendlyToolName(method, path, details.OperationID)
 
 			mcpServer.AddTool(
 				mcp.NewTool(toolName, toolOption...),
@@ -535,4 +535,16 @@ func CreateMCPToolHandler(
 		fmt.Printf("Response : %s\n", string(body))
 		return mcp.NewToolResultText(string(body)), nil
 	}
+}
+
+// createFriendlyToolName generates user-friendly tool names based on operationID
+// Falls back to the original method_path format if operationID is not available
+func createFriendlyToolName(method, path string, operationID string) string {
+	// Use operationID if available
+	if operationID != "" {
+		return strings.ReplaceAll(operationID, "_", "-")
+	}
+
+	// Fallback to old format: method_path (guarantees uniqueness)
+	return fmt.Sprintf("%s_%s", method, strings.ReplaceAll(strings.ReplaceAll(path, "}", ""), "{", ""))
 }
