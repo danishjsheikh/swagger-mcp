@@ -204,7 +204,9 @@ func LoadSwaggerServer(mcpServer *server.MCPServer, swaggerSpec models.SwaggerSp
 			reqBody := make(map[string]string)
 			reqPathParam := []string{}
 			reqQueryParam := []string{}
+			reqQueryParamRequired := map[string]bool{}
 			reqHeader := []string{}
+			reqHeaderRequired := map[string]bool{}
 
 			for _, param := range details.Parameters {
 				if param.In == "header" {
@@ -221,6 +223,7 @@ func LoadSwaggerServer(mcpServer *server.MCPServer, swaggerSpec models.SwaggerSp
 						))
 					}
 					reqHeader = append(reqHeader, param.Name)
+					reqHeaderRequired[param.Name] = param.Required
 				}
 			}
 			for _, param := range details.Parameters {
@@ -238,6 +241,7 @@ func LoadSwaggerServer(mcpServer *server.MCPServer, swaggerSpec models.SwaggerSp
 						))
 					}
 					reqQueryParam = append(reqQueryParam, param.Name)
+					reqQueryParamRequired[param.Name] = param.Required
 				}
 			}
 
@@ -293,7 +297,7 @@ func LoadSwaggerServer(mcpServer *server.MCPServer, swaggerSpec models.SwaggerSp
 			mcpServer.AddTool(
 				mcp.NewTool(toolName, toolOption...),
 				CreateMCPToolHandler(
-					reqPathParam, reqQueryParam, reqURL, reqBody, reqMethod, reqHeader, apiCfg,
+					reqPathParam, reqQueryParam, reqQueryParamRequired, reqURL, reqBody, reqMethod, reqHeader, reqHeaderRequired, apiCfg,
 				),
 			)
 		}
@@ -365,10 +369,12 @@ func setRequestSecurity(req *http.Request, security string, basicAuth string, ap
 func CreateMCPToolHandler(
 	reqPathParam []string,
 	reqQueryParam []string,
+	reqQueryParamRequired map[string]bool,
 	reqURL string,
 	reqBody map[string]string,
 	reqMethod string,
 	reqHeader []string,
+	reqHeaderRequired map[string]bool,
 	apiCfg models.ApiConfig,
 ) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -393,12 +399,14 @@ func CreateMCPToolHandler(
 			}
 			q := u.Query()
 			for _, name := range reqQueryParam {
-				if arguments == nil {
-					return mcp.NewToolResultError(fmt.Sprintf("[Error] missing or invalid Query Parameter: %s", name)), nil
-				}
 				val, ok := arguments[name].(string)
-				if !ok {
-					return mcp.NewToolResultError(fmt.Sprintf("[Error] missing or invalid Query Parameter: %s", name)), nil
+				if !ok || val == "" {
+					// Only return error if this parameter is required
+					if reqQueryParamRequired[name] {
+						return mcp.NewToolResultError(fmt.Sprintf("[Error] missing or invalid Query Parameter: %s", name)), nil
+					}
+					// Skip optional parameters that are not provided
+					continue
 				}
 				q.Set(name, val)
 			}
@@ -472,12 +480,14 @@ func CreateMCPToolHandler(
 		}
 
 		for _, headerName := range reqHeader {
-			if arguments == nil {
-				return mcp.NewToolResultError(fmt.Sprintf("[Error] missing or invalid Header: %s", headerName)), nil
-			}
 			headerValue, ok := arguments[headerName].(string)
-			if !ok {
-				return mcp.NewToolResultError(fmt.Sprintf("[Error] missing or invalid Header: %s", headerName)), nil
+			if !ok || headerValue == "" {
+				// Only return error if this header is required
+				if reqHeaderRequired[headerName] {
+					return mcp.NewToolResultError(fmt.Sprintf("[Error] missing or invalid Header: %s", headerName)), nil
+				}
+				// Skip optional headers that are not provided
+				continue
 			}
 			req.Header.Add(headerName, headerValue)
 		}
