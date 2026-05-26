@@ -28,17 +28,29 @@ type Components struct {
 type Definition struct {
 	Type       string              `json:"type"`
 	Properties map[string]Property `json:"properties"`
+	Required   []string            `json:"required,omitempty"`
 }
 
 type Property struct {
 	Type string `json:"type"`
 }
 
+type RequestBody struct {
+	Description string                     `json:"description,omitempty"`
+	Required    bool                       `json:"required,omitempty"`
+	Content     map[string]MediaTypeObject `json:"content,omitempty"`
+}
+
+type MediaTypeObject struct {
+	Schema *SchemaRef `json:"schema,omitempty"`
+}
+
 type Endpoint struct {
-    OperationID string              `json:"operationId,omitempty"`
+	OperationID string              `json:"operationId,omitempty"`
 	Summary     string              `json:"summary"`
 	Description string              `json:"description"`
 	Parameters  []Parameter         `json:"parameters"`
+	RequestBody *RequestBody        `json:"requestBody,omitempty"`
 	Responses   map[string]Response `json:"responses"`
 	Consumes    []string            `json:"consumes"`
 	Produces    []string            `json:"produces"`
@@ -60,8 +72,10 @@ type Response struct {
 }
 
 type SchemaRef struct {
-	Ref  string `json:"$ref,omitempty"`
-	Type string `json:"type,omitempty"`
+	Ref        string              `json:"$ref,omitempty"`
+	Type       string              `json:"type,omitempty"`
+	Properties map[string]Property `json:"properties,omitempty"`
+	Required   []string            `json:"required,omitempty"`
 }
 
 // SseConfig stores SSE (Server-Sent Events) related parameters
