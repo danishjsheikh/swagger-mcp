@@ -76,6 +76,40 @@ swagger-mcp --specUrl=https://your_swagger_api_docs.json --http --httpAddr=:8080
 | `--apiKeyAuth` | API key(s): `passAs:name=value` — `passAs` is `header`, `query`, or `cookie`; multiple entries comma-separated (e.g. `header:token=abc,query:user=foo`) |
 | `--headers` | Additional static headers for every request, `name1=value1,name2=value2` |
 
+### Xquik OpenAPI Example
+
+Xquik publishes a remote OpenAPI document for its X/Twitter automation API.
+Because it uses an API key header, pass the key with `--security=apiKey` and
+`--apiKeyAuth`:
+
+```sh
+export XQUIK_API_KEY="your-xquik-api-key"
+
+swagger-mcp \
+  --specUrl=https://xquik.com/openapi.json \
+  --baseUrl=https://xquik.com \
+  --security=apiKey \
+  --apiKeyAuth=header:x-api-key=$XQUIK_API_KEY
+```
+
+The same arguments can be used in an MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "xquik": {
+      "command": "swagger-mcp",
+      "args": [
+        "--specUrl=https://xquik.com/openapi.json",
+        "--baseUrl=https://xquik.com",
+        "--security=apiKey",
+        "--apiKeyAuth=header:x-api-key=<XQUIK_API_KEY>"
+      ]
+    }
+  }
+}
+```
+
 ## MCP Configuration
 To integrate with `mcphost`, include the following configuration in `.mcp.json`:
 ```json
