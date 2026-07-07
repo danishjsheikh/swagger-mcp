@@ -202,6 +202,7 @@ func LoadSwaggerServer(mcpServer *server.MCPServer, swaggerSpec models.SwaggerSp
 
 			reqMethod := fmt.Sprint(method)
 			reqBody := make(map[string]string)
+			reqBodyRequired := map[string]bool{}
 			reqPathParam := []string{}
 			reqQueryParam := []string{}
 			reqQueryParamRequired := map[string]bool{}
@@ -262,19 +263,67 @@ func LoadSwaggerServer(mcpServer *server.MCPServer, swaggerSpec models.SwaggerSp
 					reqPathParam = append(reqPathParam, param.Name)
 				}
 			}
+			// Swagger 2.0: body parameter
 			for _, param := range details.Parameters {
 				if param.In == "body" {
 					schemaName := ExtractSchemaName(param.Schema.Ref, param.Type)
 					if definition, found := swaggerSpec.Definitions[schemaName]; found {
+						requiredSet := make(map[string]bool, len(definition.Required))
+						for _, r := range definition.Required {
+							requiredSet[r] = true
+						}
 						for propName, prop := range definition.Properties {
-							toolOption = append(toolOption, mcp.WithString(
-								fmt.Sprint(propName),
+							isRequired := requiredSet[propName]
+							opts := []mcp.PropertyOption{
 								mcp.Description(fmt.Sprintf("The data for %s, it should be in format of %s", propName, prop.Type)),
-								mcp.Required(),
-							))
+							}
+							if isRequired {
+								opts = append(opts, mcp.Required())
+							}
+							toolOption = append(toolOption, mcp.WithString(fmt.Sprint(propName), opts...))
 							reqBody[propName] = prop.Type
+							reqBodyRequired[propName] = isRequired
 						}
 					}
+				}
+			}
+			// OpenAPI 3.0: requestBody
+			if details.RequestBody != nil {
+				for _, mediaType := range details.RequestBody.Content {
+					if mediaType.Schema == nil {
+						continue
+					}
+					var props map[string]models.Property
+					var requiredList []string
+					if mediaType.Schema.Ref != "" {
+						schemaName := ExtractSchemaName(mediaType.Schema.Ref, "")
+						if swaggerSpec.Components != nil {
+							if definition, found := swaggerSpec.Components.Schemas[schemaName]; found {
+								props = definition.Properties
+								requiredList = definition.Required
+							}
+						}
+					} else if mediaType.Schema.Type == "object" || len(mediaType.Schema.Properties) > 0 {
+						props = mediaType.Schema.Properties
+						requiredList = mediaType.Schema.Required
+					}
+					requiredSet := make(map[string]bool, len(requiredList))
+					for _, r := range requiredList {
+						requiredSet[r] = true
+					}
+					for propName, prop := range props {
+						isRequired := requiredSet[propName]
+						opts := []mcp.PropertyOption{
+							mcp.Description(fmt.Sprintf("The data for %s, it should be in format of %s", propName, prop.Type)),
+						}
+						if isRequired {
+							opts = append(opts, mcp.Required())
+						}
+						toolOption = append(toolOption, mcp.WithString(fmt.Sprint(propName), opts...))
+						reqBody[propName] = prop.Type
+						reqBodyRequired[propName] = isRequired
+					}
+					break // use first matching media type only
 				}
 			}
 			for status, resp := range details.Responses {
@@ -297,7 +346,7 @@ func LoadSwaggerServer(mcpServer *server.MCPServer, swaggerSpec models.SwaggerSp
 			mcpServer.AddTool(
 				mcp.NewTool(toolName, toolOption...),
 				CreateMCPToolHandler(
-					reqPathParam, reqQueryParam, reqQueryParamRequired, reqURL, reqBody, reqMethod, reqHeader, reqHeaderRequired, apiCfg,
+					reqPathParam, reqQueryParam, reqQueryParamRequired, reqURL, reqBody, reqBodyRequired, reqMethod, reqHeader, reqHeaderRequired, apiCfg,
 				),
 			)
 		}
@@ -372,6 +421,7 @@ func CreateMCPToolHandler(
 	reqQueryParamRequired map[string]bool,
 	reqURL string,
 	reqBody map[string]string,
+	reqBodyRequired map[string]bool,
 	reqMethod string,
 	reqHeader []string,
 	reqHeaderRequired map[string]bool,
@@ -416,12 +466,12 @@ func CreateMCPToolHandler(
 
 		reqBodyData := make(map[string]interface{})
 		for paramName, paramType := range reqBody {
-			if arguments == nil {
-				return mcp.NewToolResultError(fmt.Sprintf("[Error] missing Body Parameter: %s", paramName)), nil
-			}
 			paramStr, exists := arguments[paramName].(string)
-			if !exists {
-				return mcp.NewToolResultError(fmt.Sprintf("[Error] missing Body Parameter: %s", paramName)), nil
+			if !exists || paramStr == "" {
+				if reqBodyRequired[paramName] {
+					return mcp.NewToolResultError(fmt.Sprintf("[Error] missing Body Parameter: %s", paramName)), nil
+				}
+				continue
 			}
 
 			switch paramType {
